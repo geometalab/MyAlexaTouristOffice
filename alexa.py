@@ -7,6 +7,7 @@ CardTitlePrefix = "MyTouristOffice"
 ort = "Rapperswil"
 destination = ""
 i = 0
+response = "Ich habe noch gar nichts gesagt! Wollen Sie mich etwas fragen?"
 
 
 class DecimalEncoder(json.JSONEncoder):
@@ -60,7 +61,7 @@ def get_welcome_response():
     session_attributes = {}
     card_title = "Willkommen!"
     speech_output = "Willkommen bei MeiTouristOffice. Sie können mich nach "\
-    "Zugverbindungen oder Touristeninformationen fragen."
+    "Zugverbindungen oder Touristeninformationen fragen. Ich verstehe nur Hochdeutsch."
     
     # If the user either does not reply to the welcome message or says something
     # that is not understood, they will be prompted again with this text.
@@ -93,6 +94,7 @@ def buildurl(intent):
     return url
     
 def scheduling(intent):
+    global response
     skipped = False
     new_index = 1
     data = {}
@@ -136,6 +138,8 @@ def scheduling(intent):
         return build_response({}, build_speechlet_response("Fahrplan nach " + destination.title(), response, "Danke für ihre Zeit und bis zum nächsten Mal!", False))
         
 def tourist_info(intent):
+    global response
+    name = "Hallo"
     suchObjekt = intent['slots']['Suche']['value']
     response = "FEHLER"
     #Regenaktivitaeten
@@ -145,47 +149,47 @@ def tourist_info(intent):
             FilterExpression=Key('id').between(0, table.item_count-1)
         )
         response = 'Bei Regen können Sie '
-        response+=' oder '.join(str(i['activity']) for i in dbresponse['Items'])
+        response+=' oder '.join(str(a['activity']) for a in dbresponse['Items'] if not a.get("winter"))
         
     #Badeorte
     elif suchObjekt.lower() == 'baden' or suchObjekt.lower() == 'badeorte':
-        table = dynamodb.Table('Badeorte')
+        name = "Badeorte"
+        table = dynamodb.Table('PointsOfInterest')
         dbresponse = table.scan(
             FilterExpression=Key('id').between(0, table.item_count-1)
         )
         response = 'Baden können Sie im '
-        response+=' oder im '.join(str(i['badeort']) for i in dbresponse['Items'])
+        response+=' oder im '.join(str(a['poi'] + ', Preis: ' + str(a['preis']) + ". ") for a in dbresponse['Items'] if a.get("preis") is not None)
 
     #Restaurants
     elif suchObjekt.lower() == 'essen' or suchObjekt.lower() == 'restaurant':
-        table = dynamodb.Table('Essen')
+        name = "Restaurants"
+        table = dynamodb.Table('PointsOfInterest')
         dbresponse = table.scan(
             FilterExpression=Key('id').between(0, table.item_count-1)
         )
         response = 'Wenn sie am See essen wollen, sind Sie im '
-        for i in dbresponse['Items']:
-            if str(i['is_am_see']) == 'True':
-                response+=' ' + str(i['restaurant'])
-                response+=', '
+        #for a in dbresponse['Items']:
+        
+        response+=', '.join(str(a['poi']) for a in dbresponse['Items'] if a.get('is_am_see'))
         response += ' genau richtig.'
-        response += ' Ansonsten gibt es noch das'
-        for i in dbresponse['Items']:
-            if str(i['is_am_see']) == 'False':
-                response+=' ' + str(i['restaurant'])
-                if not i['id'] == table.item_count-1:
-                    response+=', '
-                    
+        response += ' Ansonsten gibt es noch das '
+        #for i in dbresponse['Items']:
+        response+=', '.join(str(a['poi']) for a in dbresponse['Items'] if a.get("is_am_see") is not None and not a.get("is_am_see"))
+        
     #Points of Interest
     elif suchObjekt.lower() == 'attraktionen' or suchObjekt.lower() == 'sehenswürdigkeiten':
+        name = "Sehenswürdigkeiten"
         table = dynamodb.Table('PointsOfInterest')
         dbresponse = table.scan(
             FilterExpression=Key('id').between(0, table.item_count-1)
         )
         response = 'Die Sehenswürdigkeiten der Stadt sind '
-        response+=', '.join(str(i['poi']) for i in dbresponse['Items'])
+        response+=', '.join(str(a['poi']) for a in dbresponse['Items'] if a.get("is_am_see") is None and a.get("preis") is None)
                 
     #Events
     elif suchObjekt.lower() == 'events' or suchObjekt.lower() == 'los':
+        name = "Events"
         table = dynamodb.Table('Events')
         dbresponse = table.scan(
             FilterExpression=Key('id').between(0, table.item_count-1)
@@ -194,19 +198,25 @@ def tourist_info(intent):
         dbresponse['Items'].sort(key=lambda el: el['datum'])
         #for i in dbresponse['Items']:
         #    response += 'Am ' + str(i['datum']) + ' ' + str(i['event']) + ', '
-        response+=', '.join(f'Am {i["datum"]} {i["event"]}' for i in dbresponse['Items'])
+        response+=', '.join(f'Am {a["datum"]} {a["event"]}' for a in dbresponse['Items'])
         
     #Winter
     elif suchObjekt.lower() == 'winter' or suchObjekt.lower() == 'schnee':
-        table = dynamodb.Table('Winter')
-        dbresponse = table.scan(
-            FilterExpression=Key('id').between(0, table.item_count-1)
-        )
+        name = "Winteraktivitäten"
+        table = dynamodb.Table('Activities')
+        dbresponse = table.scan()
         response = 'Im Winter können Sie folgendes tun: '
-        response+=', '.join(str(i["winter"]) for i in dbresponse['Items'])
+        response+=', '.join(str(a["activity"]) for a in dbresponse['Items'] if a.get("winter"))
     
     #Reden
+    return build_response({}, build_speechlet_response(name, response, "Danke für ihre Zeit und bis zum nächsten Mal!", False))
+    
+def repeat():
+    global response
     return build_response({}, build_speechlet_response("Hallo", response, "Danke für ihre Zeit und bis zum nächsten Mal!", False))
+
+def danke():
+    return build_response({}, build_speechlet_response("Auf Wiedersehen!", "Danke für ihre Zeit und bis zum nächsten Mal!", "Danke für ihre Zeit und bis zum nächsten Mal!", True))
 
 # --------------- Events ------------------
 
@@ -235,6 +245,10 @@ def on_intent(intent_request, session):
         return scheduling(intent)
     elif intent_name == "Tourist":
         return tourist_info(intent)
+    elif intent_name == "Repeat":
+        return repeat()
+    elif intent_name == "Danke":
+        return danke()
     elif intent_name == "AMAZON.HelpIntent":
         return get_help_response()
     elif intent_name == "AMAZON.CancelIntent" or intent_name == "AMAZON.StopIntent":
