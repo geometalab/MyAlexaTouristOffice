@@ -139,8 +139,8 @@ def scheduling(intent):
                                                            "Danke für ihre Zeit und bis zum nächsten Mal!", False))
 
 
-def get_db_response():
-    table = dynamodb.Table('Activities')
+def get_db_response(table_name):
+    table = dynamodb.Table(table_name)
     return table.scan(
         FilterExpression=Key('id').between(0, table.item_count - 1)
     )
@@ -155,18 +155,14 @@ def tourist_info(intent):
     # Regenaktivitaeten
     # 'Reagan' wird von Amazon Alexa im JSON input mitgegeben wenn man 'Regen' sagt.
     if suchobjekt.casefold() == 'reagan' or suchobjekt.casefold() == 'regen':
-        dbresponse = get_db_response()
+        dbresponse = get_db_response('Activities')
         response = 'Bei Regen können Sie '
-        #response += "=== " + str(dbresponse) + "==="
         response += ' oder '.join(str(a['activity']) for a in dbresponse['Items'] if a.get('rain_capable'))
 
     # Badeorte
     elif suchobjekt.casefold() in ('baden', 'badeorte', 'badeanstalten', 'badeanstalt'):
-        name = "Badeorte"
-        table = dynamodb.Table('PointsOfInterest')
-        dbresponse = table.scan(
-            FilterExpression=Key('id').between(0, table.item_count - 1)
-        )
+        name = 'Badeorte'
+        dbresponse = get_db_response('PointsOfInterest')
         response = 'Baden können Sie im '
         response += ' oder im '.join(
             str(a['poi'] + ', Preis: ' + str(a['preis']) + ". ") for a in dbresponse['Items'] if
@@ -175,13 +171,8 @@ def tourist_info(intent):
     # Restaurants
     elif suchobjekt.casefold() == 'essen' or suchobjekt.casefold() == 'restaurant':
         name = "Restaurants"
-        table = dynamodb.Table('PointsOfInterest')
-        dbresponse = table.scan(
-            FilterExpression=Key('id').between(0, table.item_count - 1)
-        )
+        dbresponse = get_db_response('PointsOfInterest')
         response = 'Wenn sie am See essen wollen, sind Sie im '
-        # for a in dbresponse['Items']:
-
         response += ', '.join(str(a['poi']) for a in dbresponse['Items'] if a.get('is_am_see'))
         response += ' genau richtig.'
         response += ' Ansonsten gibt es noch das '
@@ -192,10 +183,7 @@ def tourist_info(intent):
     # Points of Interest
     elif suchobjekt.casefold() == 'attraktionen' or suchobjekt.casefold() == 'sehenswürdigkeiten':
         name = "Sehenswürdigkeiten"
-        table = dynamodb.Table('PointsOfInterest')
-        dbresponse = table.scan(
-            FilterExpression=Key('id').between(0, table.item_count - 1)
-        )
+        dbresponse = get_db_response('PointsOfInterest')
         response = 'Die Sehenswürdigkeiten der Stadt sind '
         response += ', '.join(
             str(a['poi']) for a in dbresponse['Items'] if a.get("is_am_see") is None and a.get("preis") is None)
@@ -203,10 +191,7 @@ def tourist_info(intent):
     # Events
     elif suchobjekt.casefold() == 'events' or suchobjekt.casefold() == 'los':
         name = "Events"
-        table = dynamodb.Table('Events')
-        dbresponse = table.scan(
-            FilterExpression=Key('id').between(0, table.item_count - 1)
-        )
+        dbresponse = get_db_response('Events')
         response = 'Diesen Monat finden folgende Events statt: '
         # dbresponse['Items'].sort(key=lambda el: el['datum'])
         dbresponse['Items'].sort(key=itemgetter('datum'))
@@ -215,10 +200,9 @@ def tourist_info(intent):
     # Winter
     elif suchobjekt.casefold() == 'winter' or suchobjekt.casefold() == 'schnee':
         name = "Winteraktivitäten"
-        table = dynamodb.Table('Activities')
-        dbresponse = table.scan()
+        dbresponse = get_db_response('Activities')
         response = 'Im Winter können Sie folgendes tun: '
-        response += ', '.join(str(a["activity"]) for a in dbresponse['Items'] if a.get("winter"))
+        response += ', '.join(str(a["activity"]) for a in dbresponse['Items'] if a['season'] == "winter")
 
     # Reden
     return build_response({}, build_speechlet_response(name, response, "Danke für ihre Zeit und bis zum nächsten Mal!",
