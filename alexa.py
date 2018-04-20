@@ -202,24 +202,40 @@ def tourist_info(intent):
         name = "Winteraktivitäten"
         dbresponse = get_db_response('Activities')
         response = 'Im Winter können Sie folgendes tun: '
-        response += ', '.join(str(a["activity"]) for a in dbresponse['Items'] if a['season'] == "winter")
+        response += ', '.join(str(a["activity"]) for a in dbresponse['Items'] if a['season'] == "winter" or a['season'] == "alle")
+        
+    # Sommer
+    elif suchobjekt.casefold() == 'sommer' or suchobjekt.casefold() == 'sonne':
+        name = "Sommeraktivitäten"
+        dbresponse = get_db_response('Activities')
+        response = 'Im Sommer können Sie folgendes tun: '
+        response += ', '.join(str(a['activity']) for a in dbresponse['Items']if a['season'] == "sommer" or a['season'] == "alle")
 
     # Reden
     return build_response({}, build_speechlet_response(name, response, "Danke für ihre Zeit und bis zum nächsten Mal!",
                                                        False))
 
+def details(intent):
+    poi = intent['slots']['detailPOI']['value']
+    
+    dbresponse = get_db_response('PointsOfInterest')
+    details = [a['detail'] for a in dbresponse['Items'] if a['poi'].casefold() == poi.casefold()]
+
+    assert len(details) == 1
+    response = details[0]
+
+    return build_response({}, build_speechlet_response("Hallo", response, 
+    "Danke für ihre Zeit und bis zum nächsten Mal!", False))
 
 def repeat():
     global response
-    return build_response({},
-                          build_speechlet_response("Hallo", response, "Danke für ihre Zeit und bis zum nächsten Mal!",
-                                                   False))
+    return build_response({}, build_speechlet_response("Hallo", response, 
+    "Danke für ihre Zeit und bis zum nächsten Mal!", False))
 
 
 def danke():
     return build_response({},
-                          build_speechlet_response("Auf Wiedersehen!", "Danke für ihre Zeit und bis zum nächsten Mal!",
-                                                   "Danke für ihre Zeit und bis zum nächsten Mal!", True))
+                          build_speechlet_response("Auf Wiedersehen!", "Danke für ihre Zeit und bis zum nächsten Mal!", "Danke für ihre Zeit und bis zum nächsten Mal!", True))
 
 
 # --------------- Events ------------------
@@ -251,6 +267,7 @@ def on_intent(intent_request, session):
         "Schedule": lambda: scheduling(intent),
         "Tourist": lambda: tourist_info(intent),
         "Repeat": repeat,
+        "Details": lambda: details(intent),
         "Danke": danke,
         "AMAZON.HelpIntent": get_help_response,
         "AMAZON.CancelIntent": handle_session_end_request,
