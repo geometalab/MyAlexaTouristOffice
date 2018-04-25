@@ -1,7 +1,9 @@
 import urllib.request
 import json
+import locale
 import time
 import datetime
+from datetime import datetime
 from operator import itemgetter
 
 import boto3
@@ -145,6 +147,19 @@ def get_db_response(table_name):
         FilterExpression=Key('id').between(0, table.item_count - 1)
     )
 
+def is_in_future(event):
+    start_date = event["start_date"]
+    dt_start = datetime.strptime(start_date, '%Y-%m-%d')
+    
+    end_date = event["end_date"]
+    dt_end = datetime.strptime(end_date, '%Y-%m-%d')
+    
+    now_time = datetime.utcnow()
+    
+    return dt_start >= now_time or dt_end >= now_time
+    
+def iso_date_to_spoken(date):
+    return datetime.strptime(date, "%Y-%m-%d").strftime("%d. %B %Y")
 
 def tourist_info(intent):
     global response
@@ -192,10 +207,11 @@ def tourist_info(intent):
     elif suchobjekt.casefold() == 'events' or suchobjekt.casefold() == 'los':
         name = "Events"
         dbresponse = get_db_response('Events')
+        
         response = 'Diesen Monat finden folgende Events statt: '
-        # dbresponse['Items'].sort(key=lambda el: el['datum'])
-        dbresponse['Items'].sort(key=itemgetter('datum'))
-        response += ', '.join(f'Am {a["datum"]} {a["event"]}' for a in dbresponse['Items'])
+        
+        dbresponse['Items'].sort(key=itemgetter('start_date'))
+        response += ', '.join(f'Am {iso_date_to_spoken(a["start_date"])} {a["event"]}' for a in dbresponse['Items'] if is_in_future(a))
 
     # Winter
     elif suchobjekt.casefold() == 'winter' or suchobjekt.casefold() == 'schnee':
@@ -216,6 +232,7 @@ def tourist_info(intent):
                                                        False))
 
 def details(intent):
+    title = "Details - " + intent['slots']['detailPOI']['value'].title()
     poi = intent['slots']['detailPOI']['value']
     
     dbresponse = get_db_response('PointsOfInterest')
@@ -224,7 +241,7 @@ def details(intent):
     assert len(details) == 1
     response = details[0]
 
-    return build_response({}, build_speechlet_response("Hallo", response, 
+    return build_response({}, build_speechlet_response(title, response, 
     "Danke für ihre Zeit und bis zum nächsten Mal!", False))
 
 def repeat():
@@ -294,6 +311,7 @@ def lambda_handler(event, context):
     """ Route the incoming request based on type (LaunchRequest, IntentRequest,
     etc.) The JSON body of the request is provided in the event parameter.
     """
+    locale.setlocale(locale.LC_TIME, "de_DE")
     print(event)
     if event['session']['new']:
         on_session_started({'requestId': event['request']['requestId']},
